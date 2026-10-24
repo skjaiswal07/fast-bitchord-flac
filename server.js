@@ -61,16 +61,19 @@ function localSearch(q, limit) {
   }).filter(x => x._score > 0).sort((a,b) => b._score-a._score).slice(0, limit);
 }
 async function archiveSearch(q, limit) {
-  // Search only records with FLAC in the file metadata. Internet Archive can contain copyrighted uploads; use lawful/public-domain material.
-  const params = new URLSearchParams({ q: `(${q}) AND mediatype:audio`, fl: 'identifier,title,creator', rows: String(Math.min(limit * 3, 30)), page: '1', output: 'json' });
-  const data = await getJson('https://archive.org/advancedsearch.php?' + params.toString(), 4500);
+  // Search a wider set of Archive audio records because many top-level records do not contain FLAC files.
+  // Metadata checks are parallel but bounded; only actual .flac files are returned as lossless.
+  const safeQuery = clean(q).replace(/[(){}\[\]"\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  const params = new URLSearchParams({ q: `(${safeQuery}) AND mediatype:audio`, fl: 'identifier,title,creator', rows: '60', page: '1', output: 'json' });
+  const data = await getJson('https://archive.org/advancedsearch.php?' + params.toString(), 6000);
   const docs = data && data.response && data.response.docs || [];
-  const expanded = await Promise.all(docs.slice(0, Math.min(docs.length, 8)).map(async doc => {
+  const candidates = docs.slice(0, 30);
+  const expanded = await Promise.all(candidates.map(async doc => {
     try {
-      const meta = await getJson('https://archive.org/metadata/' + encodeURIComponent(doc.identifier), 3500);
+      const meta = await getJson('https://archive.org/metadata/' + encodeURIComponent(doc.identifier), 4500);
       const files = (meta.files || []).filter(f => /\.flac$/i.test(f.name || '') && !f.source && !f.private && Number(f.size || 0) > 0);
-      return files.slice(0, 3).map(f => {
-        const name = path.basename(f.name, '.flac').replace(/[_]/g, ' ').replace(/^\d+[ ._-]+/, '');
+      return files.slice(0, 4).map(f => {
+        const name = path.basename(f.name, path.extname(f.name)).replace(/[_]/g, ' ').replace(/^\d+[ ._-]+/, '');
         return { id: 'ia:' + encodeURIComponent(doc.identifier) + ':' + encodeURIComponent(f.name), title: name || clean(doc.title), artist: clean(Array.isArray(doc.creator) ? doc.creator[0] : doc.creator) || 'Internet Archive', album: clean(doc.title), duration: Number(f.length || 0) || 0, format: 'flac', audioQuality: 'LOSSLESS', _score: 10, _ia: true };
       });
     } catch { return []; }
