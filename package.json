@@ -1,0 +1,8 @@
+{
+  "name": "bitchord-fast-lossless",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BitChord HTTP addon: Internet Archive FLAC + personal FLAC library",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" }
+}
